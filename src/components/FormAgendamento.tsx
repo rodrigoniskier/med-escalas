@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from "react";
 import {
-  Calendar,
+  Calendar as CalendarIcon,
   Clock,
-  MapPin,
-  Users,
-  BookOpen,
   AlertCircle,
-  Search,
+  CheckCircle2,
+  ChevronRight,
+  XCircle,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import {
@@ -17,31 +16,15 @@ import {
   GradePadrao,
   BlocoHorario,
 } from "../types";
-import { checkTimeOverlap, isValidAcademicDate } from "../utils/time";
+import { checkTimeOverlap } from "../utils/time";
 import { ModalNegociacao } from "./ModalNegociacao";
+import { ModalAgendamento } from "./ModalAgendamento";
+import { getCalendarMonths } from "../utils/calendar";
+import { format, isSameMonth, isBefore, startOfDay, getDay } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
-// Funções utilitárias para conversão de dias da semana
-const jsDayToDbDay = (dateStr: string) => {
-  if (!dateStr) return null;
-  const [y, m, d] = dateStr.split("-");
-  const date = new Date(Number(y), Number(m) - 1, Number(d));
-  return date.getDay() + 1; // JS 0=Dom => DB 1=Dom
-};
+const jsDayToDbDay = (date: Date) => date.getDay() + 1; // JS 0=Dom => DB 1=Dom
 
-const dbDayToString = (dbDay: number) => {
-  const dias = [
-    "Domingo",
-    "Segunda-feira",
-    "Terça-feira",
-    "Quarta-feira",
-    "Quinta-feira",
-    "Sexta-feira",
-    "Sábado",
-  ];
-  return dias[dbDay - 1] || "";
-};
-
-// Mock fallback para ambiente de preview
 const mockBlocos: BlocoHorario[] = [
   { id: "1", hora_inicio: "07:00", hora_fim: "07:50" },
   { id: "2", hora_inicio: "07:50", hora_fim: "08:40" },
@@ -70,31 +53,24 @@ export function FormAgendamento({
   componentes,
   onSuccess,
 }: FormAgendamentoProps) {
-  const [formData, setFormData] = useState({
-    turma_id: "",
-    componente_id: "",
-    data_aula: "",
-    bloco_horario_id: "",
-    tema: "",
-    local: "",
-    metodologia: "",
-    recursos: "",
-    carga_horaria: 2,
-  });
+  const [turmaId, setTurmaId] = useState("");
+  const [componenteId, setComponenteId] = useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
+  const [blocosHorario, setBlocosHorario] = useState<BlocoHorario[]>([]);
+  const [gradePermitida, setGradePermitida] = useState<GradePadrao[]>([]);
+  const [aulasCadastradas, setAulasCadastradas] = useState<Aula[]>([]);
 
-  // Conflicting classes
+  // Modals state
+  const [selectedSlot, setSelectedSlot] = useState<{
+    date: Date;
+    bloco: BlocoHorario;
+  } | null>(null);
   const [conflitoDetectado, setConflitoDetectado] = useState<
     (Aula & { professor?: Professor; turma?: { nome: string } }) | null
   >(null);
   const [showNegociacao, setShowNegociacao] = useState(false);
 
-  // Tabelas da Matriz Curricular
-  const [blocosHorario, setBlocosHorario] = useState<BlocoHorario[]>([]);
-  const [gradePermitida, setGradePermitida] = useState<GradePadrao[]>([]);
-
+  // Load Blocos
   useEffect(() => {
     async function loadBlocos() {
       if (import.meta.env.VITE_SUPABASE_URL === "YOUR_SUPABASE_URL") {
@@ -110,426 +86,415 @@ export function FormAgendamento({
     loadBlocos();
   }, []);
 
+  // Load Grade & Aulas based on Selection
   useEffect(() => {
     async function loadGrade() {
-      if (!formData.turma_id || !formData.componente_id) {
+      if (!turmaId || !componenteId) {
         setGradePermitida([]);
+        setAulasCadastradas([]);
         return;
       }
       if (import.meta.env.VITE_SUPABASE_URL === "YOUR_SUPABASE_URL") {
         setGradePermitida([
           {
             id: "g1",
-            turma_id: formData.turma_id,
-            componente_id: formData.componente_id,
+            turma_id: turmaId,
+            componente_id: componenteId,
             dia_semana: 3,
             bloco_horario_id: "2",
           }, // Terça 07:50
           {
             id: "g2",
-            turma_id: formData.turma_id,
-            componente_id: formData.componente_id,
+            turma_id: turmaId,
+            componente_id: componenteId,
             dia_semana: 3,
             bloco_horario_id: "3",
           }, // Terça 08:40
           {
             id: "g3",
-            turma_id: formData.turma_id,
-            componente_id: formData.componente_id,
+            turma_id: turmaId,
+            componente_id: componenteId,
             dia_semana: 5,
             bloco_horario_id: "4",
           }, // Quinta 09:30
         ]);
+        setAulasCadastradas([]); // Add mock conflicting aula here if needed
         return;
       }
-      const { data } = await supabase
-        .from("grade_padrao")
-        .select("*")
-        .eq("turma_id", formData.turma_id)
-        .eq("componente_id", formData.componente_id);
-      if (data) setGradePermitida(data);
+
+      const [gradeRes, aulasRes] = await Promise.all([
+        supabase
+          .from("grade_padrao")
+          .select("*")
+          .eq("turma_id", turmaId)
+          .eq("componente_id", componenteId),
+        supabase
+          .from("aulas")
+          .select("*, professor:professores(nome), turma:turmas(nome)"),
+      ]);
+
+      if (gradeRes.data) setGradePermitida(gradeRes.data);
+      if (aulasRes.data) setAulasCadastradas(aulasRes.data);
     }
     loadGrade();
-  }, [formData.turma_id, formData.componente_id]);
+  }, [turmaId, componenteId]);
 
-  const selectedDbDay = jsDayToDbDay(formData.data_aula);
-  const diasPermitidosIds = Array.from(
-    new Set(gradePermitida.map((g) => g.dia_semana)),
-  ).sort();
-  const isDataForaDaGrade =
-    selectedDbDay &&
-    diasPermitidosIds.length > 0 &&
-    !diasPermitidosIds.includes(selectedDbDay);
+  const onSelectSlot = (date: Date, blocoId: string) => {
+    if (!usuarioAtual) {
+      alert(
+        "Selecione seu perfil de professor no topo da página antes de agendar.",
+      );
+      return;
+    }
+    const bloco = blocosHorario.find((b) => b.id === blocoId);
+    if (bloco) setSelectedSlot({ date, bloco });
+  };
 
-  const blocosPermitidos = gradePermitida
-    .filter((g) => g.dia_semana === selectedDbDay)
-    .map((g) => g.bloco_horario_id);
-  const horariosDisponiveis = blocosHorario.filter((b) =>
-    blocosPermitidos.includes(b.id),
-  );
-
-  const handleInputChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
+  const handleSaveAgendamento = async (
+    tema: string,
+    local: string,
+    metodologia: string,
+    recursos: string,
   ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-      // Resetar o horário do bloco se mudar componentes chave
-      ...(name === "turma_id" ||
-      name === "componente_id" ||
-      name === "data_aula"
-        ? { bloco_horario_id: "" }
-        : {}),
-    }));
-    setErro(null);
-    setConflitoDetectado(null);
-  };
+    if (!selectedSlot || !usuarioAtual) return;
 
-  const getHorariosByBloco = (bloco_id: string) => {
-    const b = blocosHorario.find((b) => b.id === bloco_id);
-    return b ? { hora_inicio: b.hora_inicio, hora_fim: b.hora_fim } : null;
-  };
+    const dateStr = format(selectedSlot.date, "yyyy-MM-dd");
 
-  const checkConflicts = async (hora_inicio: string, hora_fim: string) => {
-    if (import.meta.env.VITE_SUPABASE_URL === "YOUR_SUPABASE_URL") {
-      if (formData.data_aula === "2026-08-04" && hora_inicio === "07:50") {
-        return {
-          id: "mock_conflict_1",
-          professor_id: "prof_2",
-          turma_id: formData.turma_id,
-          componente_id: formData.componente_id,
-          data_aula: formData.data_aula,
-          hora_inicio: hora_inicio,
-          hora_fim: hora_fim,
-          tema: "Anatomia I",
-          professor: { id: "prof_2", nome: "Dra. Teste" },
-          turma: {
-            nome:
-              turmas.find((t) => t.id === formData.turma_id)?.nome || "Turma T",
-          },
-        };
-      }
-      return null;
+    // 1. Check for Conflicts
+    const conflitos = aulasCadastradas.filter((aula) => {
+      const isSameDate = aula.data_aula === dateStr;
+      const isSameTurmaOrProf =
+        aula.turma_id === turmaId || aula.professor_id === usuarioAtual.id;
+      const isOverlapping = checkTimeOverlap(
+        selectedSlot.bloco.hora_inicio,
+        selectedSlot.bloco.hora_fim,
+        aula.hora_inicio,
+        aula.hora_fim,
+      );
+      return isSameDate && isSameTurmaOrProf && isOverlapping;
+    });
+
+    if (conflitos.length > 0) {
+      setConflitoDetectado(conflitos[0] as any);
+      setSelectedSlot(null); // Close the agendamento modal
+      return; // Force stop. ModalAgendamento catches standard errors, but conflitos is special.
     }
 
-    try {
-      const { data, error } = await supabase
-        .from("aulas")
-        .select(`*, professor:professores(nome), turma:turmas(nome)`)
-        .eq("data_aula", formData.data_aula);
+    // 2. Insert into DB
+    if (import.meta.env.VITE_SUPABASE_URL !== "YOUR_SUPABASE_URL") {
+      const { error } = await supabase.from("aulas").insert({
+        professor_id: usuarioAtual.id,
+        turma_id: turmaId,
+        componente_id: componenteId,
+        data_aula: dateStr,
+        hora_inicio: selectedSlot.bloco.hora_inicio,
+        hora_fim: selectedSlot.bloco.hora_fim,
+        tema,
+        local,
+        metodologia,
+        recursos,
+        carga_horaria: 1, // Ou baseado na diferenca de tempo
+      });
 
       if (error) throw error;
-
-      if (data && data.length > 0) {
-        const conflitos = data.filter((aula) => {
-          const isSameTurmaOrProf =
-            aula.turma_id === formData.turma_id ||
-            aula.professor_id === usuarioAtual?.id;
-          const isOverlapping = checkTimeOverlap(
-            hora_inicio,
-            hora_fim,
-            aula.hora_inicio,
-            aula.hora_fim,
-          );
-          return isSameTurmaOrProf && isOverlapping;
-        });
-
-        if (conflitos.length > 0) {
-          return conflitos[0];
-        }
-      }
-      return null;
-    } catch (e: any) {
-      console.error(e);
-      throw new Error("Erro ao procurar conflitos.");
     }
+
+    alert("Aula agendada com sucesso!");
+    setSelectedSlot(null);
+    onSuccess();
+    // Refresh aulas
+    const [aulasRes] = await Promise.all([
+      supabase
+        .from("aulas")
+        .select("*, professor:professores(nome), turma:turmas(nome)"),
+    ]);
+    if (aulasRes.data) setAulasCadastradas(aulasRes.data);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!usuarioAtual) {
-      setErro(
-        "Selecione o professor atual (simulador de login) acima para agendar.",
-      );
-      return;
-    }
-    if (!isValidAcademicDate(formData.data_aula)) {
-      setErro(
-        "O calendário acadêmico 2026.2 só permite agendamentos entre 03/08/2026 e 19/12/2026.",
-      );
-      return;
-    }
-    if (isDataForaDaGrade) {
-      setErro(
-        `A matriz curricular não prevê este componente no dia selecionado. Dias permitidos: ${diasPermitidosIds.map(dbDayToString).join(", ")}.`,
-      );
-      return;
-    }
-    if (!formData.bloco_horario_id) {
-      setErro("Selecione um bloco de horário disponível na grade.");
-      return;
-    }
-    if (!formData.tema) {
-      setErro('O campo "Tema" é obrigatório.');
-      return;
-    }
+  const periodoInicio = new Date("2026-08-01T00:00:00");
+  const periodoFim = new Date("2026-12-31T23:59:59");
+  const meses = getCalendarMonths("2026-08-01", "2026-12-31");
+  const diasSemanasLetras = ["D", "S", "T", "Q", "Q", "S", "S"];
 
-    const times = getHorariosByBloco(formData.bloco_horario_id);
-    if (!times) return;
+  const getDayMetadata = (date: Date) => {
+    const isAcademic =
+      date >= new Date("2026-08-03T00:00:00") &&
+      date <= new Date("2026-12-19T23:59:59");
+    if (!isAcademic) return { valid: false, allowedBlocos: [] };
 
-    setLoading(true);
-    setErro(null);
+    const dbDay = jsDayToDbDay(date);
+    const rules = gradePermitida.filter((g) => g.dia_semana === dbDay);
+    if (rules.length === 0) return { valid: false, allowedBlocos: [] };
 
-    try {
-      const conflito = await checkConflicts(times.hora_inicio, times.hora_fim);
-
-      if (conflito) {
-        setConflitoDetectado(conflito);
-        setLoading(false);
-        return;
-      }
-
-      if (import.meta.env.VITE_SUPABASE_URL !== "YOUR_SUPABASE_URL") {
-        const { error: insertError } = await supabase.from("aulas").insert({
-          professor_id: usuarioAtual.id,
-          turma_id: formData.turma_id,
-          componente_id: formData.componente_id,
-          data_aula: formData.data_aula,
-          hora_inicio: times.hora_inicio,
-          hora_fim: times.hora_fim,
-          tema: formData.tema,
-          local: formData.local,
-          metodologia: formData.metodologia,
-          recursos: formData.recursos,
-          carga_horaria: Number(formData.carga_horaria) || 0,
-        });
-
-        if (insertError) throw insertError;
-      }
-
-      setFormData((prev) => ({
-        ...prev,
-        tema: "",
-        local: "",
-        metodologia: "",
-        recursos: "",
-        bloco_horario_id: "",
-      }));
-      alert("Aula agendada com sucesso!");
-      onSuccess();
-    } catch (e: any) {
-      setErro(e.message || "Ocorreu um erro ao salvar o agendamento.");
-    } finally {
-      setLoading(false);
-    }
+    return {
+      valid: true,
+      allowedBlocos: rules.map((r) => r.bloco_horario_id),
+    };
   };
+
+  const turmaNome = turmas.find((t) => t.id === turmaId)?.nome || "";
+  const componenteNome =
+    componentes.find((c) => c.id === componenteId)?.nome || "";
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 flex flex-col w-full">
-      <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-        <Calendar className="w-5 h-5 text-blue-600" />
-        Novo Agendamento
+    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 flex flex-col w-full h-full">
+      <h2 className="text-lg font-bold mb-5 flex items-center gap-2">
+        <CalendarIcon className="w-5 h-5 text-blue-600" />
+        Novo Agendamento Visual
       </h2>
 
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-4 flex-grow flex flex-col"
-      >
-        {erro && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl flex items-start gap-2">
-            <AlertCircle size={18} className="shrink-0 mt-0.5" />
-            <span>{erro}</span>
-          </div>
-        )}
+      {/* Passo 1: Seleção de Turma e Componente */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 pb-6 border-b border-slate-100">
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-bold text-slate-400 uppercase">
+            Turma
+          </label>
+          <select
+            value={turmaId}
+            onChange={(e) => setTurmaId(e.target.value)}
+            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-shadow"
+          >
+            <option value="">Selecione a turma...</option>
+            {turmas.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-bold text-slate-400 uppercase">
+            Componente Curricular
+          </label>
+          <select
+            value={componenteId}
+            onChange={(e) => setComponenteId(e.target.value)}
+            disabled={!turmaId}
+            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-shadow disabled:opacity-50"
+          >
+            <option value="">Selecione o componente...</option>
+            {componentes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.sigla} - {c.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
-        {/* Info do Conflito */}
-        {conflitoDetectado && (
-          <div className="bg-red-50 border border-red-200 rounded-3xl p-5 flex flex-col xl:flex-row items-center gap-4">
-            <div className="w-12 h-12 bg-red-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-red-200">
-              <AlertCircle size={24} />
-            </div>
-            <div className="flex-grow text-center xl:text-left">
-              <h3 className="text-red-900 font-bold text-lg leading-tight">
-                Conflito de Horário
-              </h3>
-              <p className="text-red-700 text-sm mt-1 mb-3">
-                A turma <b>{conflitoDetectado.turma?.nome}</b> já tem aula com{" "}
-                <b>{conflitoDetectado.professor?.nome}</b> neste horário.
-              </p>
-              <div className="flex flex-wrap justify-center xl:justify-start gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowNegociacao(true)}
-                  className="bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-red-700 transition"
-                >
-                  Negociar Horário
-                </button>
-              </div>
-            </div>
+      {/* Conflito Detectado Error State (Main Screen) */}
+      {conflitoDetectado && (
+        <div className="bg-red-50 border border-red-200 rounded-3xl p-5 mb-6 flex flex-col xl:flex-row items-center gap-4 animate-in fade-in zoom-in-95">
+          <div className="w-12 h-12 bg-red-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-red-200">
+            <XCircle size={24} />
           </div>
-        )}
-
-        <div className="space-y-4 flex-grow">
-          <div className="grid grid-cols-1 gap-1.5">
-            <label className="text-[11px] font-bold text-slate-400 uppercase">
-              Turma
-            </label>
-            <select
-              required
-              name="turma_id"
-              value={formData.turma_id}
-              onChange={handleInputChange}
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100"
-            >
-              <option value="">Selecione a turma...</option>
-              {turmas.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 gap-1.5">
-            <label className="text-[11px] font-bold text-slate-400 uppercase">
-              Componente Curricular
-            </label>
-            <select
-              required
-              name="componente_id"
-              value={formData.componente_id}
-              onChange={handleInputChange}
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
-              disabled={!formData.turma_id}
-            >
-              <option value="">Selecione o componente...</option>
-              {componentes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.sigla} - {c.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="grid grid-cols-1 gap-1.5">
-              <label
-                className={`text-[11px] font-bold uppercase ${isDataForaDaGrade ? "text-red-500" : "text-slate-400"}`}
+          <div className="flex-grow text-center xl:text-left">
+            <h3 className="text-red-900 font-bold text-lg leading-tight">
+              Choque de Horários
+            </h3>
+            <p className="text-red-700 text-sm mt-1 mb-3">
+              Ops! O professor <b>{conflitoDetectado.professor?.nome}</b> já
+              agendou a turma <b>{conflitoDetectado.turma?.nome}</b> para o dia{" "}
+              {conflitoDetectado.data_aula} ({conflitoDetectado.hora_inicio} -{" "}
+              {conflitoDetectado.hora_fim}).
+            </p>
+            <div className="flex flex-wrap justify-center xl:justify-start gap-3">
+              <button
+                onClick={() => setShowNegociacao(true)}
+                className="bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-red-700 transition"
               >
-                Data da Aula
-              </label>
-              <input
-                type="date"
-                required
-                name="data_aula"
-                value={formData.data_aula}
-                onChange={handleInputChange}
-                min="2026-08-03"
-                max="2026-12-19"
-                disabled={!formData.componente_id}
-                className={`w-full p-2.5 bg-slate-50 border ${isDataForaDaGrade ? "border-red-300" : "border-slate-200"} rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-60`}
-              />
-              {isDataForaDaGrade && (
-                <p className="text-[10px] text-red-600 font-medium">
-                  Fora da grade! Use:{" "}
-                  {diasPermitidosIds.map(dbDayToString).join(", ")}
-                </p>
-              )}
-              {formData.componente_id &&
-                !formData.data_aula &&
-                gradePermitida.length > 0 && (
-                  <p className="text-[10px] text-slate-500 font-medium">
-                    Dias permitidos:{" "}
-                    {diasPermitidosIds.map(dbDayToString).join(", ")}
-                  </p>
-                )}
-            </div>
-
-            <div className="grid grid-cols-1 gap-1.5">
-              <label className="text-[11px] font-bold text-slate-400 uppercase">
-                Horário Permitido
-              </label>
-              <select
-                required
-                name="bloco_horario_id"
-                value={formData.bloco_horario_id}
-                onChange={handleInputChange}
-                disabled={!formData.data_aula || isDataForaDaGrade}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                Negociar Troca via Chatbot
+              </button>
+              <button
+                onClick={() => setConflitoDetectado(null)}
+                className="bg-white border border-red-300 text-red-700 text-xs font-bold px-4 py-2 rounded-xl hover:bg-red-50 transition"
               >
-                <option value="">
-                  {horariosDisponiveis.length === 0
-                    ? "Sem horários"
-                    : "Selecione o bloco..."}
-                </option>
-                {horariosDisponiveis.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.hora_inicio} - {b.hora_fim}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-1.5">
-            <label className="text-[11px] font-bold text-slate-400 uppercase">
-              Tema da Aula *
-            </label>
-            <input
-              type="text"
-              required
-              name="tema"
-              value={formData.tema}
-              onChange={handleInputChange}
-              placeholder="Ex: Sistema Cardiovascular"
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="grid grid-cols-1 gap-1.5">
-              <label className="text-[11px] font-bold text-slate-400 uppercase">
-                Sala / Local (Opc.)
-              </label>
-              <input
-                type="text"
-                name="local"
-                value={formData.local}
-                onChange={handleInputChange}
-                placeholder="Ex: Laboratório"
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-1.5">
-              <label className="text-[11px] font-bold text-slate-400 uppercase">
-                Metodologia (Opc.)
-              </label>
-              <input
-                type="text"
-                name="metodologia"
-                value={formData.metodologia}
-                onChange={handleInputChange}
-                placeholder="Ex: Prática"
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100"
-              />
+                Voltar e Escolher Outro
+              </button>
             </div>
           </div>
         </div>
+      )}
 
-        <button
-          type="submit"
-          disabled={loading || !!conflitoDetectado || isDataForaDaGrade}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-2xl shadow-md transition-all mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading
-            ? "Verificando Disponibilidade..."
-            : "Verificar e Salvar Agendamento"}
-        </button>
-      </form>
+      {/* Passo 2: Calendário Visual */}
+      {turmaId && componenteId && gradePermitida.length === 0 ? (
+        <div className="bg-orange-50 border border-orange-100 text-orange-800 p-4 rounded-2xl text-sm font-medium flex items-center justify-center text-center">
+          Esta combinação turma/componente não possui horários cadastrados na
+          matriz (grade_padrao).
+        </div>
+      ) : turmaId && componenteId ? (
+        <div className="flex-grow flex flex-col">
+          <div className="bg-blue-50/50 rounded-2xl p-4 mb-4 border border-blue-100/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-blue-900 leading-none">
+                Selecione uma Data
+              </h3>
+              <p className="text-xs font-medium text-blue-700 mt-1 opacity-80">
+                A matriz limitou as datas e horários abaixo para{" "}
+                <b>
+                  {turmaNome} ({componenteNome})
+                </b>
+                .
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              <span className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-slate-100 border border-slate-200"></div>{" "}
+                Fora da Matriz
+              </span>
+              <span className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-100 border border-blue-300"></div>{" "}
+                Horário Livre
+              </span>
+            </div>
+          </div>
 
+          <div
+            className="overflow-y-auto pr-2 pb-4 space-y-8 flex-grow custom-scrollbar"
+            style={{ maxHeight: "600px" }}
+          >
+            {meses.map((mes, idx) => {
+              // Preenche os espaços no inicio do mês no calendário
+              const firstDayOfWeek = getDay(mes.month); // 0 = Domingo
+              const emptyDays = Array.from({ length: firstDayOfWeek }).fill(
+                null,
+              );
+
+              return (
+                <div key={idx} className="bg-white">
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    {format(mes.month, "MMMM yyyy", { locale: ptBR })}
+                    <div className="h-px bg-slate-100 flex-grow ml-2"></div>
+                  </h3>
+
+                  <div className="grid grid-cols-7 gap-1 md:gap-2">
+                    {/* Headers (D S T Q Q S S) */}
+                    {diasSemanasLetras.map((d, i) => (
+                      <div
+                        key={i}
+                        className="text-center text-[10px] font-black text-slate-300 py-2"
+                      >
+                        {d}
+                      </div>
+                    ))}
+
+                    {/* Empty Slots */}
+                    {emptyDays.map((_, i) => (
+                      <div
+                        key={`empty-${i}`}
+                        className="p-2 border border-transparent"
+                      ></div>
+                    ))}
+
+                    {/* Mes Days */}
+                    {mes.days.map((dia, dIdx) => {
+                      const { valid, allowedBlocos } = getDayMetadata(dia);
+                      const isPast = isBefore(dia, startOfDay(new Date()));
+
+                      if (!valid) {
+                        return (
+                          <div
+                            key={dIdx}
+                            className="aspect-square flex items-center justify-center rounded-xl sm:rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-300 text-sm font-medium"
+                          >
+                            {format(dia, "d")}
+                          </div>
+                        );
+                      }
+
+                      // It is valid and allowed in the matrix. Render the day block with available time chips.
+                      return (
+                        <div
+                          key={dIdx}
+                          className={`min-h-[80px] p-1.5 sm:p-2 rounded-xl sm:rounded-2xl border ${isPast ? "border-slate-200 bg-slate-50" : "border-blue-200 bg-blue-50"} flex flex-col gap-1 transition-all`}
+                        >
+                          <div
+                            className={`text-xs ml-1 font-bold ${isPast ? "text-slate-400" : "text-blue-900"}`}
+                          >
+                            {format(dia, "d")}
+                          </div>
+                          <div className="flex flex-col gap-1 flex-grow">
+                            {allowedBlocos.map((bId) => {
+                              const b = blocosHorario.find((x) => x.id === bId);
+                              if (!b) return null;
+
+                              const dateStr = format(dia, "yyyy-MM-dd");
+                              // Verifica se ESTE horário já foi agendado para esta turma (ou professor)
+                              const agendadoParaMim = aulasCadastradas.find(
+                                (a) =>
+                                  a.data_aula === dateStr &&
+                                  checkTimeOverlap(
+                                    a.hora_inicio,
+                                    a.hora_fim,
+                                    b.hora_inicio,
+                                    b.hora_fim,
+                                  ),
+                              );
+
+                              const isBlocked = !!agendadoParaMim;
+
+                              return (
+                                <button
+                                  key={bId}
+                                  title={
+                                    isBlocked
+                                      ? `Agendado por ${agendadoParaMim?.professor?.nome}`
+                                      : "Disponível"
+                                  }
+                                  onClick={() =>
+                                    !isPast &&
+                                    !isBlocked &&
+                                    onSelectSlot(dia, b.id)
+                                  }
+                                  disabled={isPast || isBlocked} // Cannot book in the past or if already block
+                                  className={`w-full text-center py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all ${
+                                    isBlocked
+                                      ? "bg-red-100 text-red-600 cursor-not-allowed opacity-80"
+                                      : isPast
+                                        ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                                        : "bg-white text-blue-700 shadow-sm hover:shadow hover:-translate-y-0.5 hover:bg-blue-600 hover:text-white border border-blue-100"
+                                  }`}
+                                >
+                                  {b.hora_inicio}{" "}
+                                  <span className="hidden sm:inline">
+                                    - {b.hora_fim}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-grow flex flex-col items-center justify-center text-center p-8 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl">
+          <CalendarIcon className="w-12 h-12 text-slate-300 mb-4" />
+          <p className="text-slate-500 font-medium text-sm max-w-sm">
+            Selecione sua turma e o componente curricular da matriz para
+            visualizar a agenda de 2026.2 disponível para você.
+          </p>
+        </div>
+      )}
+
+      {/* Modal Interativo de Conclusão do Agendamento */}
+      {selectedSlot && (
+        <ModalAgendamento
+          dataAgendamento={selectedSlot.date}
+          blocoDisponivel={selectedSlot.bloco}
+          turmaNome={turmaNome}
+          componenteNome={componenteNome}
+          onClose={() => setSelectedSlot(null)}
+          onSave={handleSaveAgendamento}
+        />
+      )}
+
+      {/* Modal de Negociação do Chat (Conflito Server Side) */}
       {showNegociacao && conflitoDetectado && usuarioAtual && (
         <ModalNegociacao
           conflito={conflitoDetectado}
@@ -541,6 +506,17 @@ export function FormAgendamento({
           }}
         />
       )}
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      `,
+        }}
+      />
     </div>
   );
 }
