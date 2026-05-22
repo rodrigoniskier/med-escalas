@@ -6,6 +6,7 @@ import { Componente } from '../types';
 
 interface ExportCronogramaProps {
   componente: Componente;
+  key?: any;
 }
 
 export function ExportCronograma({ componente }: ExportCronogramaProps) {

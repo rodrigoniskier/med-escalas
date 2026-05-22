@@ -5,7 +5,7 @@ import { Aula, Professor } from '../types';
 
 interface ModalNegociacaoProps {
   conflito: Aula & { professor?: Professor; turma?: { nome: string } };
-  usuarioAtualId: string;
+  usuarioAtualId: number | '';
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -29,7 +29,7 @@ export function ModalNegociacao({ conflito, usuarioAtualId, onClose, onSuccess }
     }
 
     try {
-      const { error } = await supabase.from('mensagens').insert({
+      const { error } = await (supabase.from('mensagens') as any).insert({
         aula_conflito_id: conflito.id,
         remetente_id: usuarioAtualId,
         destinatario_id: conflito.professor_id,

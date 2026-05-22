@@ -132,7 +132,7 @@ export default function App() {
       </main>
       
       <footer className="mt-8 text-center text-xs text-slate-400 font-medium pb-2">
-        Desenvolvido por: Prof. Rodrigo Niskier (2026 - SDG)
+        Desenvolvido por: Prof. Rodrigo Niskier (2026 - Soli Deo Gloria)
       </footer>
     </div>
   );
