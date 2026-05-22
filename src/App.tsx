@@ -9,7 +9,7 @@ export default function App() {
   const [professores, setProfessores] = useState<Professor[]>([]);
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [componentes, setComponentes] = useState<Componente[]>([]);
-  const [usuarioAtualId, setUsuarioAtualId] = useState<string>('');
+  const [usuarioAtualId, setUsuarioAtualId] = useState<number | ''>('');
 
   const isSimulated = import.meta.env.VITE_SUPABASE_URL === 'YOUR_SUPABASE_URL';
 
@@ -18,18 +18,18 @@ export default function App() {
       if (isSimulated) {
         // Fallback para simulação sem banco montado
         setProfessores([
-          { id: 'prof_1', nome: 'Dr. João Medeiros' },
-          { id: 'prof_2', nome: 'Dra. Maria Silva' }
+          { id: 1, nome: 'Dr. João Medeiros' },
+          { id: 2, nome: 'Dra. Maria Silva' }
         ]);
         setTurmas([
-           { id: 'turma_P2A', nome: 'P2A' },
-           { id: 'turma_P2B', nome: 'P2B' },
-           { id: 'turma_P2C', nome: 'P2C' }
+           { id: 1, nome: 'P2A' },
+           { id: 2, nome: 'P2B' },
+           { id: 3, nome: 'P2C' }
         ]);
         setComponentes([
-          { id: 'comp_cnm', sigla: 'CNM', nome: 'Conhecimentos Médicos' },
-          { id: 'comp_apsc', sigla: 'APSC-II', nome: 'Atenção Primária' },
-          { id: 'comp_fch', sigla: 'FCH', nome: 'Fundamentos Cirúrgicos' }
+          { id: 1, sigla: 'CNM', nome: 'Conhecimentos Médicos' },
+          { id: 2, sigla: 'APSC-II', nome: 'Atenção Primária' },
+          { id: 3, sigla: 'FCH', nome: 'Fundamentos Cirúrgicos' }
         ]);
         return;
       }
@@ -74,7 +74,7 @@ export default function App() {
              <select 
                className="bg-transparent border-none outline-none font-semibold text-sm text-slate-700 text-right appearance-none cursor-pointer"
                value={usuarioAtualId}
-               onChange={(e) => setUsuarioAtualId(e.target.value)}
+               onChange={(e) => setUsuarioAtualId(e.target.value ? Number(e.target.value) : '')}
              >
                <option value="" disabled>Selecionar perfil...</option>
                {professores.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}

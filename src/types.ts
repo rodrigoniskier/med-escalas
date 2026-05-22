@@ -1,24 +1,24 @@
 export type Professor = {
-  id: string;
+  id: number;
   nome: string;
 };
 
 export type Turma = {
-  id: string;
+  id: number;
   nome: string;
 };
 
 export type Componente = {
-  id: string;
+  id: number;
   sigla: string;
   nome: string;
 };
 
 export type Aula = {
-  id: string;
-  professor_id: string;
-  turma_id: string;
-  componente_id: string;
+  id: number;
+  professor_id: number;
+  turma_id: number;
+  componente_id: number;
   data_aula: string; // YYYY-MM-DD
   hora_inicio: string; // HH:mm
   hora_fim: string; // HH:mm
@@ -30,26 +30,26 @@ export type Aula = {
 };
 
 export type Mensagem = {
-  id: string;
-  aula_conflito_id: string;
-  remetente_id: string;
-  destinatario_id: string;
+  id: number;
+  aula_conflito_id: number;
+  remetente_id: number;
+  destinatario_id: number;
   mensagem: string;
   status: string; // 'Pendente' | 'Respondida'
 };
 
 export type BlocoHorario = {
-  id: string;
+  id: number;
   hora_inicio: string; // HH:mm
   hora_fim: string; // HH:mm
 };
 
 export type GradePadrao = {
-  id: string;
-  turma_id: string;
+  id: number;
+  turma_id: number;
   dia_semana: number; // 1=Dom, 2=Seg, 3=Ter, 4=Qua, 5=Qui, 6=Sex, 7=Sab
-  bloco_horario_id: string;
-  componente_id: string;
+  bloco_horario_id: number;
+  componente_id: number;
 };
 
 export type Database = {

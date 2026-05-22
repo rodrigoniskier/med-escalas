@@ -26,18 +26,18 @@ import { ptBR } from "date-fns/locale";
 const jsDayToDbDay = (date: Date) => date.getDay() + 1; // JS 0=Dom => DB 1=Dom
 
 const mockBlocos: BlocoHorario[] = [
-  { id: "1", hora_inicio: "07:00", hora_fim: "07:50" },
-  { id: "2", hora_inicio: "07:50", hora_fim: "08:40" },
-  { id: "3", hora_inicio: "08:40", hora_fim: "09:30" },
-  { id: "4", hora_inicio: "09:30", hora_fim: "10:20" },
-  { id: "5", hora_inicio: "10:20", hora_fim: "11:10" },
-  { id: "6", hora_inicio: "11:10", hora_fim: "12:00" },
-  { id: "7", hora_inicio: "13:00", hora_fim: "13:50" },
-  { id: "8", hora_inicio: "13:50", hora_fim: "14:40" },
-  { id: "9", hora_inicio: "14:40", hora_fim: "15:30" },
-  { id: "10", hora_inicio: "15:30", hora_fim: "16:20" },
-  { id: "11", hora_inicio: "16:20", hora_fim: "17:10" },
-  { id: "12", hora_inicio: "17:10", hora_fim: "18:00" },
+  { id: 1, hora_inicio: "07:00", hora_fim: "07:50" },
+  { id: 2, hora_inicio: "07:50", hora_fim: "08:40" },
+  { id: 3, hora_inicio: "08:40", hora_fim: "09:30" },
+  { id: 4, hora_inicio: "09:30", hora_fim: "10:20" },
+  { id: 5, hora_inicio: "10:20", hora_fim: "11:10" },
+  { id: 6, hora_inicio: "11:10", hora_fim: "12:00" },
+  { id: 7, hora_inicio: "13:00", hora_fim: "13:50" },
+  { id: 8, hora_inicio: "13:50", hora_fim: "14:40" },
+  { id: 9, hora_inicio: "14:40", hora_fim: "15:30" },
+  { id: 10, hora_inicio: "15:30", hora_fim: "16:20" },
+  { id: 11, hora_inicio: "16:20", hora_fim: "17:10" },
+  { id: 12, hora_inicio: "17:10", hora_fim: "18:00" },
 ];
 
 interface FormAgendamentoProps {
@@ -53,8 +53,8 @@ export function FormAgendamento({
   componentes,
   onSuccess,
 }: FormAgendamentoProps) {
-  const [turmaId, setTurmaId] = useState("");
-  const [componenteId, setComponenteId] = useState("");
+  const [turmaId, setTurmaId] = useState<number | "">("");
+  const [componenteId, setComponenteId] = useState<number | "">("");
 
   const [blocosHorario, setBlocosHorario] = useState<BlocoHorario[]>([]);
   const [gradePermitida, setGradePermitida] = useState<GradePadrao[]>([]);
@@ -97,25 +97,25 @@ export function FormAgendamento({
       if (import.meta.env.VITE_SUPABASE_URL === "YOUR_SUPABASE_URL") {
         setGradePermitida([
           {
-            id: "g1",
-            turma_id: turmaId,
-            componente_id: componenteId,
+            id: 1,
+            turma_id: turmaId as number,
+            componente_id: componenteId as number,
             dia_semana: 3,
-            bloco_horario_id: "2",
+            bloco_horario_id: 2,
           }, // Terça 07:50
           {
-            id: "g2",
-            turma_id: turmaId,
-            componente_id: componenteId,
+            id: 2,
+            turma_id: turmaId as number,
+            componente_id: componenteId as number,
             dia_semana: 3,
-            bloco_horario_id: "3",
+            bloco_horario_id: 3,
           }, // Terça 08:40
           {
-            id: "g3",
-            turma_id: turmaId,
-            componente_id: componenteId,
+            id: 3,
+            turma_id: turmaId as number,
+            componente_id: componenteId as number,
             dia_semana: 5,
-            bloco_horario_id: "4",
+            bloco_horario_id: 4,
           }, // Quinta 09:30
         ]);
         setAulasCadastradas([]); // Add mock conflicting aula here if needed
@@ -139,7 +139,7 @@ export function FormAgendamento({
     loadGrade();
   }, [turmaId, componenteId]);
 
-  const onSelectSlot = (date: Date, blocoId: string) => {
+  const onSelectSlot = (date: Date, blocoId: number) => {
     if (!usuarioAtual) {
       alert(
         "Selecione seu perfil de professor no topo da página antes de agendar.",
@@ -251,7 +251,7 @@ export function FormAgendamento({
           </label>
           <select
             value={turmaId}
-            onChange={(e) => setTurmaId(e.target.value)}
+            onChange={(e) => setTurmaId(e.target.value ? Number(e.target.value) : "")}
             className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-shadow"
           >
             <option value="">Selecione a turma...</option>
@@ -268,7 +268,7 @@ export function FormAgendamento({
           </label>
           <select
             value={componenteId}
-            onChange={(e) => setComponenteId(e.target.value)}
+            onChange={(e) => setComponenteId(e.target.value ? Number(e.target.value) : "")}
             disabled={!turmaId}
             className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-shadow disabled:opacity-50"
           >
